@@ -116,7 +116,7 @@ function getExt($imgName) {
 }
 
 /*
- * Returns just image name, no path.
+ * Returns just image name, no path or extension.
  * For the sake of simplicity we're assuming that the $imgName being passed in
  * already passes isCompatibleType so we can just lop off the end.
  */

@@ -37,11 +37,15 @@ function processCommand($args) {
 		if(checkDB()) {
 			add($args);
 		} else {
-			echo LOAD_DB . HELP . ENDL;
+			errLoadDB();
 		}
 		break;
-	case "new":
-		newDb($args);
+	case "browse":
+		if(checkDB()) {
+			browse();
+		} else {
+			errLoadDB();
+		}
 		break;
 	case "exit":
 		$continue = false;
@@ -53,14 +57,24 @@ function processCommand($args) {
 		if(checkDB()) {
 			listImgs($args);
 		} else {
-			echo LOAD_DB . HELP . ENDL;
+			errLoadDB();
 		}
+		break;
+	case "new":
+		newDb($args);
 		break;
 	case "open":
 		open($args);
 		break;
 	case "view":
 		echo "View.\n";
+		break;
+	case "which":
+		if(checkDB()) {
+			which();
+		} else {
+			errLoadDB();
+		}
 		break;
 	}
 
@@ -73,12 +87,14 @@ function processCommand($args) {
 function validCommand($cmd) {
 	$commands = [
 		"add",
+		"browse",
 		"exit",
 		"help",
 		"list",
 		"new",
 		"open",
 		"view",
+		"which",
 	];
 	return in_array($cmd, $commands);
 }
@@ -134,6 +150,53 @@ function isCompatibleType($imgName) {
 }
 
 /*
+ * IMAGE MANIPULATION
+ */
+
+function getImgResource($path) {
+	switch(getExt($path)) {
+	case "GIF":
+		return imagecreatefromgif($path);
+		break;
+	case "JPG":
+		return imagecreatefromjpeg($path);
+		break;
+	case "PNG":
+		return imagecreatefrompng($path);
+		break;
+	}
+}
+
+function generateThumb($path) {
+	$img = getImgResource($path);
+	$info = getimagesize($path);
+	$newWidth = 150;
+	$newHeight = 100;
+	/* Check if width is less than height. */
+	if($info[0] < $info[1]) {
+		$newWidth = 100;
+		$newHeight = 150;
+	}
+	$scaled = imagescale($img, $newWidth, $newHeight);
+
+	/* Don't actually write image, just get its content in output buffer. */
+	ob_start();
+	imagejpeg($scaled);
+	$data = ob_get_contents();
+	ob_end_clean();
+	
+	return $data;
+}
+
+/*
+ * ERROR FUNCTIONS
+ */
+
+function errLoadDB() {
+	echo LOAD_DB . HELP . ENDL;
+}
+
+/*
  * HANDLERS
  */
 function add($args) {
@@ -144,22 +207,33 @@ function add($args) {
 			return 0;
 		}
 		$img = fread(fopen($argv[1], "r"), filesize($argv[1]));
-		addImg(getImgName($argv[1]), base64_encode($img));
+		$thumb = generateThumb($argv[1]);
+		addImg(
+			getImgName($argv[1]), 
+			base64_encode($img),
+			base64_encode($thumb)
+		);
 	} else {
 		echo ARG_ERROR . HELP . ENDL;
 	}
+}
+
+function browse() {
+	echo "Browse.\n";
 }
 
 function help() {
 echo <<<EOT
 
   add -- Add new image
+  browse -- Open image browser
   exit -- Exit program
   help -- Display help menu
   list -- List entries in database
   new -- Create new image database
   open -- Open existing image database
   view -- View entry details
+  which -- Information about currently open database
 
 
 EOT;
@@ -173,17 +247,21 @@ function listImgs($args) {
 }
 
 function newDb($args) {
-	open($args);
+	open($args, SQLITE3_OPEN_CREATE | SQLITE3_OPEN_READWRITE);
 	createImgTable();
 }
 
-function open($args) {
+function open($args, $flag=SQLITE3_OPEN_READWRITE) {
 	if(countArgs($args, 1)) {
 		$argv = explode(" ", $args);
-		$GLOBALS['db'] = new SQLite3($argv[1]);
+		$GLOBALS['db'] = new SQLite3($argv[1], $flag);
 	} else {
 		echo ARG_ERROR . HELP . ENDL;
 	}
+}
+
+function which() {
+	var_dump($GLOBALS['db']);
 }
 
 /*
@@ -194,18 +272,19 @@ function createImgTable() {
 		"CREATE TABLE images(" .
 		"id INTEGER PRIMARY KEY AUTOINCREMENT, " .
 		"name TEXT, " .
-		"data TEXT" .
+		"data TEXT, " .
+		"thumb TEXT" .
 		")"
 	);
 }
 
 function getImgs() {
-	return $GLOBALS['db']->query("SELECT id, name FROM images");
+	return $GLOBALS['db']->query("SELECT id, name, thumb FROM images");
 }
 
-function addImg($name, $data) {
+function addImg($name, $data, $thumb) {
 	$GLOBALS['db']->exec(
-		"INSERT INTO images (name, data) " .
-		"VALUES('$name', '$data')"
+		"INSERT INTO images (name, data, thumb) " .
+		"VALUES('$name', '$data', '$thumb')"
 	);
 }
