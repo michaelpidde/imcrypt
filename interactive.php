@@ -12,7 +12,7 @@ echo <<<EOF
 
 EOF;
 
-define("SCRIPT", __dir__);
+define("SCRIPT", __dir__ . "/");
 define("PROMPT", "imcrypt:/> ");
 define("ARG_ERROR", "Argument(s) expected. ");
 define("LOAD_DB", "No database loaded. ");
@@ -20,7 +20,8 @@ define("HELP", "See 'help' for details.");
 define("ENDL", "\n");
 
 $GLOBALS['db'] = null;
-$GLOBALS['browse_pid'] = null;
+$GLOBALS['dbName'] = null;
+$GLOBALS['browsePid'] = null;
 
 /*
  * MAIN LOOP
@@ -229,23 +230,26 @@ function add($args) {
 function browse() {
 	$output = [];
 	exec("php -S localhost:8888 "
-		. SCRIPT . "/browse/index.php"
+		. " -t ". SCRIPT . "browse/" 
 		. " > /dev/null 2>&1 & echo $!",
 		$output
 	);
-	$GLOBALS['browse_pid'] = $output[0];
+	$GLOBALS['browsePid'] = $output[0];
 
 	if(isLinux()) {
 		$cmd = "xdg-open";
 	} else {
 		$cmd = "open";
 	}
-	exec($cmd . " http://localhost:8888 > /dev/null &");
+	exec($cmd . " http://localhost:8888/index.php?"
+		. "db=" . urlencode(SCRIPT . $GLOBALS['dbName'])
+		. " > /dev/null &"
+	);
 }
 
 function onExit() {
-	if($GLOBALS['browse_pid'] != null) {
-		exec("kill " . $GLOBALS['browse_pid']);
+	if($GLOBALS['browsePid'] != null) {
+		exec("kill " . $GLOBALS['browsePid']);
 	}
 }
 
@@ -281,6 +285,7 @@ function newDb($args) {
 function open($args, $flag=SQLITE3_OPEN_READWRITE) {
 	if(countArgs($args, 1)) {
 		$argv = explode(" ", $args);
+		$GLOBALS['dbName'] = $argv[1];
 		$GLOBALS['db'] = new SQLite3($argv[1], $flag);
 	} else {
 		echo ARG_ERROR . HELP . ENDL;

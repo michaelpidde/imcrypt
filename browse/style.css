@@ -1,0 +1,13 @@
+body {
+	font-family: sans-serif;
+}
+header {
+	width: 786;
+	padding: 6px;
+	border: 1px solid #333;
+	background: #e0e0e0;
+}
+main {
+	width: 800px;
+	margin: 10px auto;
+}
