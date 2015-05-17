@@ -12,12 +12,15 @@ echo <<<EOF
 
 EOF;
 
+define("SCRIPT", __dir__);
 define("PROMPT", "imcrypt:/> ");
 define("ARG_ERROR", "Argument(s) expected. ");
 define("LOAD_DB", "No database loaded. ");
 define("HELP", "See 'help' for details.");
 define("ENDL", "\n");
+
 $GLOBALS['db'] = null;
+$GLOBALS['browse_pid'] = null;
 
 /*
  * MAIN LOOP
@@ -48,6 +51,7 @@ function processCommand($args) {
 		}
 		break;
 	case "exit":
+		onExit();
 		$continue = false;
 		break;
 	case "help":
@@ -149,6 +153,10 @@ function isCompatibleType($imgName) {
 	return in_array(getExt($imgName), ["GIF", "JPG", "PNG"]);
 }
 
+function isLinux() {
+	return strpos(php_uname(), "Linux") >= 0;
+}
+
 /*
  * IMAGE MANIPULATION
  */
@@ -219,7 +227,26 @@ function add($args) {
 }
 
 function browse() {
-	echo "Browse.\n";
+	$output = [];
+	exec("php -S localhost:8888 "
+		. SCRIPT . "/browse/index.php"
+		. " > /dev/null 2>&1 & echo $!",
+		$output
+	);
+	$GLOBALS['browse_pid'] = $output[0];
+
+	if(isLinux()) {
+		$cmd = "xdg-open";
+	} else {
+		$cmd = "open";
+	}
+	exec($cmd . " http://localhost:8888 > /dev/null &");
+}
+
+function onExit() {
+	if($GLOBALS['browse_pid'] != null) {
+		exec("kill " . $GLOBALS['browse_pid']);
+	}
 }
 
 function help() {
