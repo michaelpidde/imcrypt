@@ -23,6 +23,8 @@ $GLOBALS['db'] = null;
 $GLOBALS['dbName'] = null;
 $GLOBALS['browsePid'] = null;
 
+
+
 /*
  * MAIN LOOP
  */
@@ -38,19 +40,14 @@ function processCommand($args) {
 	$continue = true;
 	switch(getCmd($args)) {
 	case "add":
-		if(checkDB()) {
-			add($args);
-		} else {
-			errLoadDB();
-		}
+		databaseRequiredWrapper("add", $args);
 		break;
 	case "browse":
-		if(checkDB()) {
-			browse();
-		} else {
-			errLoadDB();
-		}
+		databaseRequiredWrapper("browse", $args);
 		break;
+        case "delete":
+                databaseRequiredWrapper("delete", $args);
+                break;
 	case "exit":
 		onExit();
 		$continue = false;
@@ -58,12 +55,11 @@ function processCommand($args) {
 	case "help":
 		help();
 		break;
+        case "import":
+                databaseRequiredWrapper("import", $args);
+                break;
 	case "list":
-		if(checkDB()) {
-			listImgs($args);
-		} else {
-			errLoadDB();
-		}
+		databaseRequiredWrapper("listImgs", $args);
 		break;
 	case "new":
 		newDb($args);
@@ -75,16 +71,14 @@ function processCommand($args) {
 		echo "View.\n";
 		break;
 	case "which":
-		if(checkDB()) {
-			which();
-		} else {
-			errLoadDB();
-		}
+		which();
 		break;
 	}
 
 	return $continue;
 }
+
+
 
 /*
  * HELPER FUNCTIONS
@@ -93,8 +87,10 @@ function validCommand($cmd) {
 	$commands = [
 		"add",
 		"browse",
+                "delete",
 		"exit",
 		"help",
+                "import",
 		"list",
 		"new",
 		"open",
@@ -119,6 +115,16 @@ function checkDB() {
 	} else {
 		return true;
 	}
+}
+
+function databaseRequiredWrapper($callback, $args) {
+        if(is_callable($callback)) {
+                if(checkDB()) {
+                        $callback($args);
+                } else {
+                        errLoadDB();
+                }
+        }
 }
 
 /*
@@ -150,6 +156,31 @@ function getExt($imgName) {
 	}
 }
 
+function getValidImgsInDir($dir) {
+        if(is_dir($dir)) {
+                $scan = scandir($dir);
+                $filtered = [];
+                foreach($scan as $img) {
+                        if(isCompatibleType($img)) {
+                                array_push($filtered, $dir . "/" . $img);
+                        }
+                }
+                return $filtered;
+        } else {
+                errInvalidDirectory($dir);
+        }
+}
+
+function addImgProcess($path) {
+        $img = fread(fopen($path, "r"), filesize($path));
+	$thumb = generateThumb($path);
+	addImg(
+		getImgName($path),
+		base64_encode($img),
+		base64_encode($thumb)
+	);
+}
+
 function isCompatibleType($imgName) {
 	return in_array(getExt($imgName), ["GIF", "JPG", "PNG"]);
 }
@@ -157,6 +188,8 @@ function isCompatibleType($imgName) {
 function isLinux() {
 	return strpos(php_uname(), "Linux") >= 0;
 }
+
+
 
 /*
  * IMAGE MANIPULATION
@@ -197,13 +230,24 @@ function generateThumb($path) {
 	return $data;
 }
 
+
+
 /*
  * ERROR FUNCTIONS
  */
+function errInvalidArguments() {
+        echo ARG_ERROR . HELP . ENDL;
+}
+
+function errInvalidDirectory($dir) {
+        echo "Invalid directory '$dir'" . ENDL;
+}
 
 function errLoadDB() {
 	echo LOAD_DB . HELP . ENDL;
 }
+
+
 
 /*
  * HANDLERS
@@ -215,19 +259,13 @@ function add($args) {
 			echo "Non-compatible image type. " . HELP . ENDL;
 			return 0;
 		}
-		$img = fread(fopen($argv[1], "r"), filesize($argv[1]));
-		$thumb = generateThumb($argv[1]);
-		addImg(
-			getImgName($argv[1]), 
-			base64_encode($img),
-			base64_encode($thumb)
-		);
+		addImgProcess($argv[1]);
 	} else {
-		echo ARG_ERROR . HELP . ENDL;
+		errInvalidArguments();
 	}
 }
 
-function browse() {
+function browse($args) {
 	$output = [];
 	exec("php -S localhost:8888 "
 		. " -t ". SCRIPT . "browse/" 
@@ -241,10 +279,19 @@ function browse() {
 	} else {
 		$cmd = "open";
 	}
-	exec($cmd . " http://localhost:8888/index.php?"
-		. "db=" . urlencode(SCRIPT . $GLOBALS['dbName'])
+	exec($cmd . " http://localhost:8888/index.php"
+		. "?db=" . urlencode(SCRIPT . $GLOBALS['dbName'])
 		. " > /dev/null &"
 	);
+}
+
+function delete($args) {
+        if(countArgs($args, 1)) {
+                $argv = explode(" ", $args);
+                deleteImg($argv[1]);
+        } else {
+		errInvalidArguments();
+	}
 }
 
 function onExit() {
@@ -256,10 +303,12 @@ function onExit() {
 function help() {
 echo <<<EOT
 
-  add -- Add new image
+  add -- Add new image (GIF, JPG, or PNG)
   browse -- Open image browser
+  delete -- Delete image by ID
   exit -- Exit program
   help -- Display help menu
+  import -- Add valid images (GIF, JPG, PNG) in directory
   list -- List entries in database
   new -- Create new image database
   open -- Open existing image database
@@ -268,6 +317,20 @@ echo <<<EOT
 
 
 EOT;
+}
+
+function import($args) {
+        if(countArgs($args, 1)) {
+                $argv = explode(" ", $args);
+                $dir = $argv[1];
+                $imgs = getValidImgsInDir($dir);
+                foreach($imgs as $img) {
+                        echo "Importing " . $img . ENDL;
+                        addImgProcess($img);
+                }
+        } else {
+                errInvalidArguments();
+        }
 }
 
 function listImgs($args) {
@@ -288,13 +351,23 @@ function open($args, $flag=SQLITE3_OPEN_READWRITE) {
 		$GLOBALS['dbName'] = $argv[1];
 		$GLOBALS['db'] = new SQLite3($argv[1], $flag);
 	} else {
-		echo ARG_ERROR . HELP . ENDL;
+		errInvalidArguments();
 	}
 }
 
 function which() {
-	var_dump($GLOBALS['db']);
+        echo "Current database: ";
+	if(checkDB()) {
+                 echo $GLOBALS['dbName'] . ENDL;
+        } else {
+                echo "None" . ENDL;
+        }
+        if($GLOBALS['browsePid'] != null) {
+                echo "Browse PID: " . $GLOBALS['browsePid'] . ENDL;
+        }
 }
+
+
 
 /*
  * QUERY FUNCTIONS
@@ -319,4 +392,10 @@ function addImg($name, $data, $thumb) {
 		"INSERT INTO images (name, data, thumb) " .
 		"VALUES('$name', '$data', '$thumb')"
 	);
+}
+
+function deleteImg($id) {
+        $qry = $GLOBALS['db']->prepare("DELETE FROM images WHERE id = :id");
+        $qry->bindValue("id", $id, SQLITE3_INTEGER);
+        $qry->execute();
 }

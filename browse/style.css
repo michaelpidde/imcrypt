@@ -2,12 +2,40 @@ body {
 	font-family: sans-serif;
 }
 header {
-	width: 786;
+	width: 696px;
 	padding: 6px;
 	border: 1px solid #333;
 	background: #e0e0e0;
 }
 main {
-	width: 800px;
+	width: 720px;
 	margin: 10px auto;
+}
+.stupid-wrapper {
+        float: left;
+        width: 170px;
+        margin: 10px 10px 0 0;
+        background: #e0e0e0;
+}
+.stupid-wrapper:hover {
+        background: #bbb;
+}
+.image {
+        width: 168px;
+        height: 168px;
+        border: 1px solid #333;
+        display: table-cell;
+        vertical-align: middle;
+        text-align: center;
+}
+.name {
+        width: 168px;
+        height: 168px;
+        border-right: 1px solid #333;
+        border-left: 1px solid #333;
+        border-bottom: 1px solid #333;
+        font-size: 10px;
+        text-align: center;
+        height: 14px;
+        padding-top: 2px;
 }
