@@ -1,5 +1,4 @@
 <?php
-$quitUrl = $_SERVER['PHP_SELF'] . "?quit=" . $pid;
 $dbName = urldecode($_GET['db']);
 $db = new SQLite3($dbName, SQLITE3_OPEN_READWRITE);
 $imgs = $db->query("SELECT id, name, thumb FROM images");
