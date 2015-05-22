@@ -173,6 +173,7 @@ function addImgProcess($path) {
 	$thumb = generateThumb($path);
 	addImg(
 		getImgName($path),
+		getExt($path),
 		base64_encode($img),
 		base64_encode($thumb)
 	);
@@ -377,6 +378,7 @@ function createImgTable() {
 		"CREATE TABLE images(" .
 		"id INTEGER PRIMARY KEY AUTOINCREMENT, " .
 		"name TEXT, " .
+		"ext TEXT, " .
 		"data TEXT, " .
 		"thumb TEXT" .
 		")"
@@ -387,10 +389,10 @@ function getImgs() {
 	return $GLOBALS['db']->query("SELECT id, name, thumb FROM images");
 }
 
-function addImg($name, $data, $thumb) {
+function addImg($name, $ext, $data, $thumb) {
 	$GLOBALS['db']->exec(
-		"INSERT INTO images (name, data, thumb) " .
-		"VALUES('$name', '$data', '$thumb')"
+		"INSERT INTO images (name, ext, data, thumb) " .
+		"VALUES('$name', '$ext', '$data', '$thumb')"
 	);
 }
 
