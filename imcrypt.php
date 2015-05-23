@@ -52,10 +52,13 @@ function processCommand($args) {
 		onExit();
 		$continue = false;
 		break;
+	case "export":
+		databaseRequiredWrapper("export", $args);
+		break;
 	case "help":
 		help();
 		break;
-    case "import":
+	case "import":
 		databaseRequiredWrapper("import", $args);
 		break;
 	case "list":
@@ -89,6 +92,7 @@ function validCommand($cmd) {
 		"browse",
         "delete",
 		"exit",
+		"export",
 		"help",
         "import",
 		"list",
@@ -118,13 +122,13 @@ function checkDB() {
 }
 
 function databaseRequiredWrapper($callback, $args) {
-        if(is_callable($callback)) {
-                if(checkDB()) {
-                        $callback($args);
-                } else {
-                        errLoadDB();
-                }
-        }
+	if(is_callable($callback)) {
+		if(checkDB()) {
+			$callback($args);
+		} else {
+			errLoadDB();
+		}
+	}
 }
 
 /*
@@ -154,18 +158,18 @@ function getExt($imgName) {
 }
 
 function getValidImgsInDir($dir) {
-        if(is_dir($dir)) {
-                $scan = scandir($dir);
-                $filtered = [];
-                foreach($scan as $img) {
-                        if(isCompatibleType($img)) {
-                                array_push($filtered, $dir . "/" . $img);
-                        }
-                }
-                return $filtered;
-        } else {
-                errInvalidDirectory($dir);
-        }
+	if(is_dir($dir)) {
+		$scan = scandir($dir);
+		$filtered = [];
+		foreach($scan as $img) {
+			if(isCompatibleType($img)) {
+				array_push($filtered, $dir . "/" . $img);
+			}
+		}
+		return $filtered;
+	} else {
+		errInvalidDirectory($dir);
+	}
 }
 
 function addImgProcess($path) {
@@ -177,6 +181,17 @@ function addImgProcess($path) {
 		base64_encode($img),
 		base64_encode($thumb)
 	);
+}
+
+function exportAll() {
+	$imgs = getImgs(true);
+	while($img = $imgs->fetchArray(SQLITE3_ASSOC)) {
+		exportImg(
+			$img['name'],
+			$img['ext'],
+			base64_decode($img['data'])
+		);
+	}
 }
 
 function isCompatibleType($imgName) {
@@ -227,6 +242,23 @@ function generateThumb($path) {
 	ob_end_clean();
 	
 	return $data;
+}
+
+function exportImg($name, $ext, $data) {
+	echo "Exporting " . $name . ENDL;
+	$img = imagecreatefromstring($data);
+	switch(getExt($ext)) {
+	case "GIF":
+		return imagegif($img, $name);
+		break;
+	case "JPG":
+	case "JPEG":
+		return imagejpeg($img, $name);
+		break;
+	case "PNG":
+		return imagepng($img, $name);
+		break;
+	}
 }
 
 
@@ -287,10 +319,10 @@ function browse($args) {
 }
 
 function delete($args) {
-        if(countArgs($args, 1)) {
-                $argv = explode(" ", $args);
-                deleteImg($argv[1]);
-        } else {
+	if(countArgs($args, 1)) {
+		$argv = explode(" ", $args);
+		deleteImg($argv[1]);
+	} else {
 		errInvalidArguments();
 	}
 }
@@ -298,6 +330,24 @@ function delete($args) {
 function onExit() {
 	if($GLOBALS['browsePid'] != null) {
 		exec("kill " . $GLOBALS['browsePid']);
+	}
+}
+
+function export($args) {
+	if(countArgs($args, 1)) {
+		$argv = explode(" ", $args);
+		if($argv[1] == "all") {
+			exportAll();
+		} else {
+			$data = getImg($argv[1]);
+			exportImg(
+				$data['name'],
+				$data['ext'],
+				base64_decode($data['data'])
+			);
+		}
+	} else {
+		errInvalidArguments();
 	}
 }
 
@@ -385,8 +435,11 @@ function createImgTable() {
 	);
 }
 
-function getImgs() {
-	return $GLOBALS['db']->query("SELECT id, name, thumb FROM images");
+function getImgs($withData = false) {
+	$qry = "SELECT id, name, ext, thumb";
+	$qry .= ($withData) ? ", data" : "";
+	$qry .= " FROM images";
+	return $GLOBALS['db']->query($qry);
 }
 
 function addImg($name, $ext, $data, $thumb) {
@@ -394,6 +447,12 @@ function addImg($name, $ext, $data, $thumb) {
 		"INSERT INTO images (name, ext, data, thumb) " .
 		"VALUES('$name', '$ext', '$data', '$thumb')"
 	);
+}
+
+function getImg($id) {
+	$qry = $GLOBALS['db']->prepare("SELECT name, ext, data FROM images WHERE id = :id");
+	$qry->bindValue("id", $id, SQLITE3_INTEGER);
+	return $qry->execute()->fetchArray();
 }
 
 function deleteImg($id) {
