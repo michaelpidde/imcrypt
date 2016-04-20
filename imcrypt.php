@@ -22,6 +22,8 @@ define("ENDL", "\n");
 $GLOBALS['db'] = null;
 $GLOBALS['dbName'] = null;
 $GLOBALS['browsePid'] = null;
+$GLOBALS['password'] = null;
+$GLOBALS['loggedIn'] = false;
 
 
 
@@ -175,11 +177,15 @@ function getValidImgsInDir($dir) {
 function addImgProcess($path) {
 	$img = fread(fopen($path, "r"), filesize($path));
 	$thumb = generateThumb($path);
+	$fullEncoding = base64_encode($img);
+	$fullEncoding = addSalt($fullEncoding, base64_encode($GLOBALS['password']));
+	$thumbEncoding = base64_encode($thumb);
+	$thumbEncoding = addSalt($thumbEncoding, base64_encode($GLOBALS['password']));
 	addImg(
 		getImgName($path),
 		getExt($path),
-		base64_encode($img),
-		base64_encode($thumb)
+		$fullEncoding,
+		$thumbEncoding
 	);
 }
 
@@ -189,8 +195,54 @@ function exportAll() {
 		exportImg(
 			$img['name'],
 			$img['ext'],
-			base64_decode($img['data'])
+			base64_decode(absorbSalt($img['data'], $GLOBALS['password']))
 		);
+	}
+}
+
+function promptPassword($new = false) {
+	if($new) {
+		echo 'New password: ';
+	} else {
+		echo 'Password: ';
+	}
+
+	// Change terminal to not show typed chars.
+	system('stty -echo');
+	$password = trim(fgets(STDIN));
+	// Change back to show typed chars.
+	system('stty echo');
+	echo "\n";
+	
+	return $password;
+}
+
+function addSalt($img, $salt) {
+	// Security by obscurity... sort of... but not really...
+	$index = rand(0, 1000);
+	if(strlen($img) >= $index) {
+		return substr_replace($img, $salt, $index, 0);
+	} else {
+		// Just keep trying.
+		addSalt($img, $salt);
+	}
+}
+
+function absorbSalt($img, $salt) {
+	// Salt will be within first 1000 chars of image encoding. Get first 1000
+	// so we don't have to search the whole string.
+	$chars = substr($img, 0, 1000);
+	$img = str_replace($salt, '', $img);
+	return $img;
+}
+
+function checkPassword() {
+	$password = promptPassword();
+	$password = sha1($password);
+	if($password == getPassword()) {
+		return true;
+	} else {
+		return false;
 	}
 }
 
@@ -339,7 +391,7 @@ function export($args) {
 		if($argv[1] == "all") {
 			exportAll();
 		} else {
-			$data = getImg($argv[1]);
+			$data = absorbSalt(getImg($argv[1]), $GLOBALS['salt']);
 			exportImg(
 				$data['name'],
 				$data['ext'],
@@ -392,15 +444,22 @@ function listImgs($args) {
 }
 
 function newDb($args) {
-	open($args, SQLITE3_OPEN_CREATE | SQLITE3_OPEN_READWRITE);
+	// false passed in as third param so we don't check login.
+	open($args, SQLITE3_OPEN_CREATE | SQLITE3_OPEN_READWRITE, false);
 	createImgTable();
+	createSettingsTable();
+	$password = promptPassword(true);
+	setPassword($password);
 }
 
-function open($args, $flag=SQLITE3_OPEN_READWRITE) {
+function open($args, $flag=SQLITE3_OPEN_READWRITE, $checkPassword=true) {
 	if(countArgs($args, 1)) {
 		$argv = explode(" ", $args);
 		$GLOBALS['dbName'] = $argv[1];
 		$GLOBALS['db'] = new SQLite3($argv[1], $flag);
+		if($checkPassword) {
+			checkPassword();
+		}
 	} else {
 		errInvalidArguments();
 	}
@@ -433,6 +492,27 @@ function createImgTable() {
 		"thumb TEXT" .
 		")"
 	);
+}
+
+function createSettingsTable() {
+	$GLOBALS['db']->exec(
+		"CREATE TABLE settings(" .
+		"password TEXT" .
+		")"
+	);
+}
+
+function setPassword($password) {
+	$password = sha1($password);
+	$GLOBALS['password'] = $password;
+	$GLOBALS['db']->exec(
+		"INSERT INTO settings (password) VALUES ('" . $password . "')"
+	);
+}
+
+function getPassword() {
+	$qry = "SELECT password FROM settings";
+	return $GLOBALS['db']->query($qry)->fetchArray()['password'];
 }
 
 function getImgs($withData = false) {
